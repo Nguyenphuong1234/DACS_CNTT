@@ -1,8 +1,8 @@
 # HỆ THỐNG QUẢN LÝ VÀ BÁN HÀNG TRỰC TUYẾN
 # Sinh viên thực hiện
-- Nguyễn Minh Phương - 23015738
 - Đồng Thị Ánh - 23013883
 - Bùi Thị Hồng Tươi - 23015124
+- Nguyễn Minh Phương - 23015738
 
 ***
 # Giới thiệu dự án
