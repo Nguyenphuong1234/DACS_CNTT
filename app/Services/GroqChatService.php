@@ -6,8 +6,12 @@ use App\Models\AiSetting;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\User;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Throwable;
 
 class GroqChatService
 {
@@ -25,25 +29,73 @@ class GroqChatService
             return 'Hệ thống chưa cấu hình GROQ_API_KEY nên chưa thể trả lời bằng AI.';
         }
 
-        $response = Http::withToken($apiKey)
-            ->acceptJson()
-            ->timeout(config('services.groq.timeout', 20))
-            ->post(rtrim(config('services.groq.base_url'), '/').'/chat/completions', [
-                'model' => $setting->model ?: config('services.groq.model'),
-                'messages' => [
-                    ['role' => 'system', 'content' => $this->systemPrompt($setting, $user)],
-                    ['role' => 'user', 'content' => Str::limit($message, 1200, '')],
-                ],
-                'temperature' => 0.4,
-                'max_tokens' => 700,
+        try {
+            $response = $this->httpClient($apiKey)
+                ->post(rtrim(config('services.groq.base_url'), '/').'/chat/completions', [
+                    'model' => $setting->model ?: config('services.groq.model'),
+                    'messages' => [
+                        ['role' => 'system', 'content' => $this->systemPrompt($setting, $user)],
+                        ['role' => 'user', 'content' => Str::limit($message, 1200, '')],
+                    ],
+                    'temperature' => 0.4,
+                    'max_tokens' => 700,
+                ]);
+        } catch (ConnectionException $exception) {
+            Log::warning('Groq API connection failed.', [
+                'message' => $exception->getMessage(),
             ]);
 
+            return 'AI đang tạm thời không phản hồi. Bạn có thể thử lại sau hoặc liên hệ cửa hàng.';
+        } catch (Throwable $exception) {
+            Log::error('Groq API request failed.', [
+                'message' => $exception->getMessage(),
+            ]);
+
+            return 'AI đang tạm thời không phản hồi. Bạn có thể thử lại sau hoặc liên hệ cửa hàng.';
+        }
+
         if (! $response->successful()) {
+            Log::warning('Groq API returned an error response.', [
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
+
             return 'AI đang tạm thời không phản hồi. Bạn có thể thử lại sau hoặc liên hệ cửa hàng.';
         }
 
         return trim((string) data_get($response->json(), 'choices.0.message.content'))
             ?: 'AI chưa có câu trả lời phù hợp cho câu hỏi này.';
+    }
+
+    private function httpClient(string $apiKey): PendingRequest
+    {
+        return Http::withToken($apiKey)
+            ->acceptJson()
+            ->timeout(config('services.groq.timeout', 20))
+            ->withOptions([
+                'verify' => $this->resolveSslVerify(),
+            ]);
+    }
+
+    private function resolveSslVerify(): bool|string
+    {
+        if (! config('services.groq.verify_ssl', true)) {
+            return false;
+        }
+
+        $caBundle = config('services.groq.ca_bundle');
+
+        if (is_string($caBundle) && $caBundle !== '' && is_file($caBundle)) {
+            return $caBundle;
+        }
+
+        $defaultBundle = storage_path('certs/cacert.pem');
+
+        if (is_file($defaultBundle)) {
+            return $defaultBundle;
+        }
+
+        return true;
     }
 
     private function systemPrompt(AiSetting $setting, ?User $user): string

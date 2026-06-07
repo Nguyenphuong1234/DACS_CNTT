@@ -40,6 +40,8 @@ return [
         'model' => env('GROQ_MODEL', 'llama-3.1-8b-instant'),
         'base_url' => env('GROQ_BASE_URL', 'https://api.groq.com/openai/v1'),
         'timeout' => (int) env('GROQ_TIMEOUT', 20),
+        'verify_ssl' => filter_var(env('GROQ_VERIFY_SSL', true), FILTER_VALIDATE_BOOLEAN),
+        'ca_bundle' => env('GROQ_CA_BUNDLE'),
     ],
 
 ];
